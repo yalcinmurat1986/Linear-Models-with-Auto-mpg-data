@@ -1,0 +1,296 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+autompg1 = read.csv(file.choose())
+autompg=autompg1
+autompg1
+
+```
+
+Car name doesn't look like a good feature to continue with, so we exclude car.name
+
+```{r}
+autompg = autompg[-9]
+```
+
+DATA CAMP
+
+```{r}
+
+dim(autompg)
+head(autompg)
+summary(autompg)
+str(autompg)
+pairs(autompg)
+plot(mpg~acceleration,data = autompg)
+matplot(autompg$mpg,autompg$origin,lty = c(1,2),lwd = 2,col = c(2:3),pch = 19)
+```
+When we look at the summary, we see some variables are left-skewed. (Mean greater than median)
+
+When we look at the str of data, horsepower is object which is wierd. Because we expect the horsepower to be integer. We have a problem !!!
+  There are "?" in our data. We detected problem. Good way to solve this issue is replacing ? with means of data. 
+
+```{r}
+temp= as.character(autompg$horsepower)
+autompg$horsepower = as.numeric(temp)
+autompg[is.na(autompg)] <- mean(autompg$horsepower, na.rm = T)
+```
+  
+Let's look at the better plots to get all insights
+
+```{r}
+library(ggplot2)
+ggplot(autompg,aes(y = displacement, x = mpg)) +geom_point() + geom_smooth()
+ggplot(autompg,aes(y = horsepower, x = mpg)) +geom_point() + geom_smooth()
+ggplot(autompg,aes(y = weight, x = mpg)) +geom_point() + geom_smooth()
+ggplot(autompg,aes(y = acceleration, x = mpg)) +geom_point() + geom_smooth()
+ggplot(autompg,aes(y = model.year, x = mpg)) +geom_point() + geom_smooth()
+ggplot(autompg,aes(y = origin, x = mpg)) +geom_point() + geom_smooth()
+
+```
+
+When we look at the plots, it is bvious that horsepower, wieght and displacement need some kind of transformation
+Let's look at the correlation between each features
+
+```{r}
+corauto=cor(autompg, use="complete.obs", method="kendall") 
+library(corrplot)
+corrplot(corauto ,addCoef.col = "black")
+```
+We see very strong correlation between cylinders, displacement, horsepower and weight. It means we have multicollinearity problem
+
+Before we start analysis, it is good to divide data into training and test sets
+
+```{r}
+autompg=autompg1
+autompg = autompg[-9]
+
+num_training =integer(0.8* dim(autompg)[1])
+num_test = (dim(autompg)[1] - length(num_training))
+```
+
+```{r}
+set.seed(123)
+train_ind = sample(nrow(autompg),length(num_training))
+auto_train = autompg[train_ind,]
+auto_test = autompg[-train_ind,]
+
+dim(auto_train)
+dim(auto_test)
+
+```
+
+Let's handle with "?"s in horsepower
+
+```{r}
+temp= as.character(auto_train$horsepower)
+auto_train$horsepower = as.numeric(temp)
+auto_train[is.na(auto_train)] <- mean(auto_train$horsepower, na.rm = T)
+
+mean(auto_train$horsepower, na.rm = T)
+auto_train$horsepower
+
+temp= as.character(auto_test$horsepower)
+auto_test$horsepower = as.numeric(temp)
+auto_test[is.na(auto_test)] <- mean(auto_test$horsepower, na.rm = T)
+```
+
+```{r}
+auto_train
+auto_test
+```
+
+```{r}
+auto_train.lm1 = lm(mpg~., data = auto_train)
+summary(auto_train.lm1)
+```
+When we look at the plots, displacement has negative correlation with mpg. However, coeffient is positive (+) number, which contradicts with what plot tells us. Briefly, plot indicates negative correlation, coefficiant indicates positive correlation. This stems from multicollinearity.
+
+As we see here, not all features are statistically important.
+Let's do feature selection
+```{r}
+step(auto_train.lm1)
+```
+
+
+```{r}
+levarage = hat(model.matrix(auto_train.lm1))
+plot(levarage)
+train[levarage>0.10,]
+
+```
+
+```{r}
+cook = cooks.distance(auto_train.lm1)
+plot(cook,ylab="Cooks distances")
+points(71,cook[71],col='red')
+```
+There is no influential outlier in our data.
+
+Horse power has been removed from our model
+Let's compare our new model with previous one using anova
+
+```{r}
+auto_train_lm2 = lm(mpg~acceleration+displacement+ origin+ weight + model.year, data = auto_train)
+summary(auto_train_lm2)
+```
+
+
+```{r}
+auto_comp = anova(auto_train.lm1 ,auto_train_lm2)
+auto_comp
+
+```
+
+```{r}
+step(auto_train_lm2)
+summary(auto_train_lm2)
+```
+acceleration has a high p-value so let's take out acceleration from our model
+```{r}
+auto_train_lm3 = lm(mpg~displacement+ origin+ weight + model.year, data = auto_train)
+summary(auto_train_lm3)
+```
+
+displacement has high p-value so let's take out acceleration from our model
+
+```{r}
+auto_train_lm4 = lm(mpg ~ origin+ weight + model.year, data = auto_train)
+summary(auto_train_lm4)
+```
+
+```{r}
+auto_comp1 = anova(auto_train.lm1 ,auto_train_lm4)
+auto_comp1
+```
+
+We see that regsubset gave us the three features that we have choosen.
+
+```{r}
+library(leaps)
+rs=summary(regsubsets(mpg~.,auto_train))
+rs$which
+```
+
+```{r}
+yhat = predict(auto_train_lm4,auto_test, interval = "confidence",level = .95)
+head(yhat)
+head(yhat[,1])
+mse =mean((auto_test[,1]-yhat[,1])^2)
+mse
+
+```
+
+
+```{r}
+library(pls)
+set.seed(123)
+fit = pcr(mpg~., data=auto_train, validation = "CV", ncomp=3)
+validationplot(fit, val.type = "MSEP")
+summary(fit)
+```
+
+```{r}
+
+pcrrmse=RMSEP(fit, newdata=auto_test)
+plot(pcrrmse)
+which.min(pcrrmse$val)
+y=predict(pcrr,test, ncomp = 6)
+msepcr=(mean((y-test$mpg)^2))
+msepcr
+
+summary(prtrain)
+autoclass = factor(auto_train$origin)
+plot(pr$x[,1:2], col=autoclass)
+```
+
+Since we have small data, using pca does not help us to make good model
+
+```{r}
+pr=prcomp(auto_train,scale. = F, center = F)
+pr
+pr$rotation   # loadings
+pr$x
+pr$x[,1:3]         #scores
+library(factoextra)
+fviz_eig(pr)
+summary(pr)
+pcatrain = lm(auto_train$mpg~pr$x[,1:2])
+yhat3 = predict(pcatrain, interval = "confidence",level = .95)
+msepca =mean((auto_train[,1]-yhat3[,1])^2)
+msepca
+summary(prtrain)
+autoclass = factor(auto_train$origin)
+plot(pr$x[,1:2], col=autoclass)
+
+mysvd = svd(auto_train)
+mysvd
+dim(pr$x)
+```
+As we see pcr is giving better mse than prcomp
+
+Let's use transformation and see the effect
+
+```{r}
+auto_train_trans = lm(mpg ~ origin + I(1/sqrt(weight)) + model.year, data = auto_train)
+summary(auto_train_lm4)
+yhattrans = predict(auto_train_trans, interval = "confidence",level = .95)
+msetrans =mean((auto_train[,1]-yhattrans[,1])^2)
+msetrans
+
+```
+
+As we see Mse droped form 13 to 8.8 after transformation. 
+
+Let's look at the ridge regression
+
+```{r}
+require(MASS)
+
+train_scaled=as.data.frame(scale(auto_train, scale = T))
+ridmod=lm.ridge(mpg ~ ., train_scaled, lambda = seq(0, 100, by=0.5))
+matplot(ridmod$lambda, coef(ridmod), type="l", xlab = expression(lambda), ylab = expression(hat(beta)))
+which.min(ridmod$GCV)
+abline(v=1)
+```
+
+Let's do more exploratory analysis according to affect of region on mpg
+
+```{r}
+head(autompg)
+
+# par(mfrow = c(2,2), mar = c(5,4,4,2)+.1)
+boxplot(mpg ~ origin, autompg,ylab='mpg', xlab='origin',col = c(2,3,5), main='Boxplot of Origin ~ Mpg')
+
+stripchart(mpg ~ origin, autompg, vertical=T, method='stack', xlab='origin', 
+           ylab='mpg', pch = 8, col = c(2,3,5), main='Origin ~ Mpg')
+
+meanvec = tapply(autompg$mpg, autompg$origin,mean)
+sdvec = tapply(autompg$mpg, autompg$origin,sd)
+
+plot(meanvec,sdvec,xlab = "Mean",ylab = "SD",col =1, bg=c(2,3,5), pch = 21,cex = 1.8,font = 2)
+plot.new()
+legend('topleft', rownames(meanvec), col =c(2,3,5), pch=19, bty='n', cex=.75)
+title("Mean - SD Threatment")
+
+aovlist = aov(mpg ~ origin, autompg)
+summary(aovlist)
+
+qqnorm(aovlist$residuals, main = "Normal QQ-Plot of Residuals") 
+qqline(aovlist$residuals)
+
+```
+
+When we look at the boxplots of the mpg according to each region, we can easily see that American Cars (region 1) have low mpg than European Cars (Region 2). European Cars have low mpg than asian cars. Japan wins !!!
+
+```{r}
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
