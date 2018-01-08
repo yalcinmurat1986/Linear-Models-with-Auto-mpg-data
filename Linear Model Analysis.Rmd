@@ -51,6 +51,15 @@ ggplot(autompg,aes(y = origin, x = mpg)) +geom_point() + geom_smooth()
 
 ```
 
+We can plot 3D 
+
+```{r}
+
+require(rgl)
+plot3d(autompg$mpg, autompg$weight, autompg$acceleration, type="p", col="red", xlab="MPG", ylab="WIEGHT", zlab="ACCELERATION", site=5, lwd=2)
+
+```
+
 When we look at the plots, it is bvious that horsepower, wieght and displacement need some kind of transformation
 Let's look at the correlation between each features
 
@@ -172,6 +181,21 @@ We see that regsubset gave us the three features that we have choosen.
 library(leaps)
 rs=summary(regsubsets(mpg~.,auto_train))
 rs$which
+```
+
+Let's look at the diognostic plots
+
+```{r}
+par(mfrow=c(2,2))
+termplot(auto_train_lm4,partial.resid = T,col.res = 1,se=T)
+```
+
+Let's look at the residuals
+
+```{r}
+res=residuals(auto_train_lm4)
+plot(res)
+abline(0,0)
 ```
 
 ```{r}
